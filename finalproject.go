@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,12 @@ type Task struct {
 	Completed   bool      `json:"completed"`
 	CreatedAt   time.Time `json:"created_at"`
 }
+
+type ByDate []Task
+
+func (a ByDate) Len() int           { return len(a) }
+func (a ByDate) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByDate) Less(i, j int) bool { return a[i].CreatedAt.Before(a[j].CreatedAt) }
 
 type TodoList struct {
 	Tasks    []Task `json:"tasks"`
@@ -76,7 +83,9 @@ func (tl *TodoList) View() {
 		return
 	}
 
-	fmt.Println("\n=== 待辦事項列表 ===")
+	sort.Sort(ByDate(tl.Tasks))
+
+	fmt.Println("\n=== 待辦事項列表 (按建立日期排序) ===")
 	for _, task := range tl.Tasks {
 		status := "[ ]"
 		if task.Completed {
@@ -133,7 +142,7 @@ func (tl *TodoList) Toggle(id int) error {
 
 func showHelp() {
 	fmt.Println("\n=== To-Do List 指令說明 ===")
-	fmt.Println("view           - 查看所有待辦事項")
+	fmt.Println("view           - 查看所有待辦事項 (按建立日期排序)")
 	fmt.Println("add <內容>     - 添加新的待辦事項")
 	fmt.Println("delete <ID>    - 刪除指定的待辦事項")
 	fmt.Println("edit <ID> <內容> - 編輯指定的待辦事項")

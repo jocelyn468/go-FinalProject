@@ -3,8 +3,37 @@
     {
       "username": "123",
       "password_hash": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
+    },
+    {
+      "username": "哈哈",
+      "password_hash": "c7e616822f366fb1b5e0756af498cc11d2c0862edcb32ca65882f622ff39de1b"
     }
   ],
-  "tasks": [],
-  "next_id": 5
+  "tasks": [
+    {
+      "id": 5,
+      "description": "1",
+      "completed": true,
+      "created_at": "2025-12-02T02:28:12.563349474+08:00",
+      "due_at": "0001-01-01T00:00:00Z",
+      "username": "哈哈"
+    },
+    {
+      "id": 6,
+      "description": "1",
+      "completed": true,
+      "created_at": "2025-12-02T02:49:25.575859007+08:00",
+      "due_at": "2000-02-22T22:22:00Z",
+      "username": "哈哈"
+    },
+    {
+      "id": 7,
+      "description": "1",
+      "completed": true,
+      "created_at": "2025-12-02T02:49:52.469683568+08:00",
+      "due_at": "2025-12-02T22:22:00Z",
+      "username": "哈哈"
+    }
+  ],
+  "next_id": 8
 }

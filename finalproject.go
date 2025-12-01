@@ -14,10 +14,13 @@ import (
 	"time"
 )
 
+// --- 資料結構定義 ---
+
 type User struct {
 	Username     string `json:"username"`
 	PasswordHash string `json:"password_hash"`
 }
+
 type Task struct {
 	ID          int       `json:"id"`
 	Description string    `json:"description"`
@@ -26,11 +29,6 @@ type Task struct {
 	DueAt       time.Time `json:"due_at"`
 	Username    string    `json:"username"`
 }
-type ByDueDate []Task
-
-func (a ByDueDate) Len() int           { return len(a) }
-func (a ByDueDate) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByDueDate) Less(i, j int) bool { return a[i].DueAt.Before(a[j].DueAt) }
 
 type AppData struct {
 	Users  []User `json:"users"`
@@ -38,22 +36,30 @@ type AppData struct {
 	NextID int    `json:"next_id"`
 }
 
+// --- 全域變數 ---
+
 var appData *AppData
 var sessions = make(map[string]string) // sessionID -> username
+
+// --- 輔助函式 ---
+
 func hashPassword(password string) string {
 	hash := sha256.Sum256([]byte(password))
 	return hex.EncodeToString(hash[:])
 }
+
 func loadData() {
 	file, err := os.ReadFile("app_data.json")
 	if err == nil && len(file) > 0 {
 		json.Unmarshal(file, appData)
 	}
 }
+
 func saveData() {
 	data, _ := json.MarshalIndent(appData, "", "  ")
 	os.WriteFile("app_data.json", data, 0644)
 }
+
 func getUsername(r *http.Request) string {
 	cookie, err := r.Cookie("session")
 	if err != nil {
@@ -61,6 +67,7 @@ func getUsername(r *http.Request) string {
 	}
 	return sessions[cookie.Value]
 }
+
 func requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if getUsername(r) == "" {
@@ -70,9 +77,11 @@ func requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		next(w, r)
 	}
 }
+
 func remainingTime(d time.Time) string {
 	now := time.Now()
 	diff := d.Sub(now)
+
 	if diff > 0 {
 		if diff.Hours() >= 24 {
 			return fmt.Sprintf("剩 %.0f 天", diff.Hours()/24)
@@ -82,6 +91,7 @@ func remainingTime(d time.Time) string {
 		}
 		return fmt.Sprintf("剩 %.0f 分鐘", diff.Minutes())
 	}
+
 	diff = now.Sub(d)
 	if diff.Hours() >= 24 {
 		return fmt.Sprintf("已逾期 %.0f 天", diff.Hours()/24)
@@ -91,6 +101,8 @@ func remainingTime(d time.Time) string {
 	}
 	return fmt.Sprintf("已逾期 %.0f 分鐘", diff.Minutes())
 }
+
+// --- HTML 模板 ---
 
 const loginTemplate = `
 <!DOCTYPE html>
@@ -142,6 +154,7 @@ button:hover { background-color: #5568d3; }
 </body>
 </html>
 `
+
 const listTemplate = `
 <!DOCTYPE html>
 <html lang="zh-TW">
@@ -178,6 +191,9 @@ li:last-child { border-bottom: none; }
 .actions a { text-decoration: none; color: #dc3545; margin-left: 10px; font-size: 0.9em; }
 .actions a:hover { text-decoration: underline; }
 .empty-state { text-align: center; padding: 3rem; color: #888; font-size: 1.1rem; }
+.filter-tabs { display: flex; gap: 10px; margin-bottom: 15px; justify-content: center; }
+.filter-tabs a { padding: 5px 15px; border-radius: 15px; text-decoration: none; font-size: 0.9rem; color: #555; background: #e9ecef; }
+.filter-tabs a.active { background: #667eea; color: white; }
 </style>
 </head>
 <body>
@@ -192,49 +208,60 @@ li:last-child { border-bottom: none; }
         </div>
     </div>
 </div>
-<div class="container">
-<div style="text-align:center; margin-bottom:15px;">
-    {{if gt .OverdueCount 0}}
-        <span style="color:#dc3545; font-weight:500;">⚠️ 你有 {{.OverdueCount}} 個逾期任務</span>
-    {{end}}
-</div>
-<div class="view-toggle">
-    <a href="/?filter=" class="{{if eq .Filter ""}}active{{end}}">📋 全部</a>
-    <a href="/?filter=today" class="{{if eq .Filter "today"}}active{{end}}">📅 今日任務</a>
-    <a href="/?filter=incomplete" class="{{if eq .Filter "incomplete"}}active{{end}}">⏳ 未完成</a>
-</div>
-<form action="/add" method="POST" class="input-group">
-    <input type="text" name="description" placeholder="輸入新的待辦事項..." required>
-    <input type="datetime-local" name="due_at" required>
-    <button type="submit" class="add-btn">新增</button>
-</form>
-<div class="task-list">
-<ul>
-{{range .Tasks}}
-<li>
-    <div class="task-content">
-        <form action="/toggle" method="POST" style="margin:0;">
-            <input type="hidden" name="id" value="{{.ID}}">
-            <input type="checkbox" onchange="this.form.submit()" {{if .Completed}}checked{{end}}>
-        </form>
 
-        <span class="{{if .Completed}}completed{{end}}">
-            {{.Description}}
-            <span class="time {{if .DueAt.Before now}}red{{end}}">
-                到期：{{.DueAt.Format "01-02 15:04"}} ｜ {{remain .DueAt}}
-            </span>
-        </span>
+<div class="container">
+    <div style="text-align:center; margin-bottom:15px;">
+        {{if gt .OverdueCount 0}}
+            <span style="color:#dc3545; font-weight:500;">⚠️ 你有 {{.OverdueCount}} 個逾期任務</span>
+        {{end}}
     </div>
-    <div class="actions">
-        <a href="/delete?id={{.ID}}">刪除</a>
+
+    <div class="view-toggle">
+        <a href="/" class="active">📋 清單模式</a>
+        <a href="/calendar">📅 月曆模式</a>
     </div>
-</li>
-{{else}}
-<li class="empty-state">目前沒有任務 🎉</li>
-{{end}}
-</ul>
+
+    <div class="filter-tabs">
+        <a href="/?filter=" class="{{if eq .Filter ""}}active{{end}}">全部</a>
+        <a href="/?filter=today" class="{{if eq .Filter "today"}}active{{end}}">今日任務</a>
+        <a href="/?filter=incomplete" class="{{if eq .Filter "incomplete"}}active{{end}}">未完成</a>
+    </div>
+
+    <form action="/add" method="POST" class="input-group">
+        <input type="text" name="description" placeholder="輸入新的待辦事項..." required>
+        <input type="datetime-local" name="due_at" required max="9999-12-31T23:59">
+        <button type="submit" class="add-btn">新增</button>
+    </form>
+
+    <div class="task-list">
+        <ul>
+        {{range .Tasks}}
+        <li>
+            <div class="task-content">
+                <form action="/toggle" method="POST" style="margin:0;">
+                    <input type="hidden" name="id" value="{{.ID}}">
+                    <input type="checkbox" onchange="this.form.submit()" {{if .Completed}}checked{{end}}>
+                </form>
+
+                <span class="{{if .Completed}}completed{{end}}">
+                    {{.Description}}
+                    <span class="time {{if .DueAt.Before now}}red{{end}}">
+                        到期：{{.DueAt.Format "01-02 15:04"}} ｜ {{remain .DueAt}}
+                    </span>
+                </span>
+            </div>
+
+            <div class="actions">
+                <a href="/delete?id={{.ID}}">刪除</a>
+            </div>
+        </li>
+        {{else}}
+        <li class="empty-state">目前沒有任務 🎉</li>
+        {{end}}
+        </ul>
+    </div>
 </div>
-</div>
+
 <script>
 setTimeout(function(){ location.reload(); }, 60000);
 </script>
@@ -297,40 +324,44 @@ body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #f4f4f9;
         </div>
     </div>
 </div>
+
 <div class="container">
-<div class="view-toggle">
-    <a href="/">📋 清單模式</a>
-    <a href="/calendar" class="active">📅 月曆模式</a>
-</div>
-<div class="calendar-nav">
-    <a href="/calendar?year={{.PrevYear}}&month={{.PrevMonth}}">← 上個月</a>
-    <h2>{{printf "%d" .Year}} 年 {{printf "%d" .Month}} 月</h2>
-    <a href="/calendar?year={{.NextYear}}&month={{.NextMonth}}">下個月 →</a>
-</div>
-<div class="calendar">
-    <div class="calendar-grid">
-        <div class="calendar-header">日</div>
-        <div class="calendar-header">一</div>
-        <div class="calendar-header">二</div>
-        <div class="calendar-header">三</div>
-        <div class="calendar-header">四</div>
-        <div class="calendar-header">五</div>
-        <div class="calendar-header">六</div>
-        
-        {{range .Days}}
-        <div class="calendar-day {{.Class}}">
-            <div class="day-number">{{.Day}}</div>
-            {{range .Tasks}}
-            <div class="day-task {{if .Completed}}completed{{else if .IsOverdue}}overdue{{end}}" 
-                 onclick="showTask({{.ID}}, '{{.Description}}', '{{.DueAt.Format "2006-01-02 15:04"}}', {{.Completed}})">
-                {{.Description}}
+    <div class="view-toggle">
+        <a href="/">📋 清單模式</a>
+        <a href="/calendar" class="active">📅 月曆模式</a>
+    </div>
+
+    <div class="calendar-nav">
+        <a href="/calendar?year={{.PrevYear}}&month={{.PrevMonth}}">← 上個月</a>
+        <h2>{{printf "%d" .Year}} 年 {{printf "%d" .Month}} 月</h2>
+        <a href="/calendar?year={{.NextYear}}&month={{.NextMonth}}">下個月 →</a>
+    </div>
+
+    <div class="calendar">
+        <div class="calendar-grid">
+            <div class="calendar-header">日</div>
+            <div class="calendar-header">一</div>
+            <div class="calendar-header">二</div>
+            <div class="calendar-header">三</div>
+            <div class="calendar-header">四</div>
+            <div class="calendar-header">五</div>
+            <div class="calendar-header">六</div>
+            
+            {{range .Days}}
+            <div class="calendar-day {{.Class}}">
+                <div class="day-number">{{.Day}}</div>
+                {{range .Tasks}}
+                <div class="day-task {{if .Completed}}completed{{else if .IsOverdue}}overdue{{end}}" 
+                     onclick="showTask({{.ID}}, '{{.Description}}', '{{.DueAt.Format "2006-01-02 15:04"}}', {{.Completed}})">
+                    {{.Description}}
+                </div>
+                {{end}}
             </div>
             {{end}}
         </div>
-        {{end}}
     </div>
 </div>
-</div>
+
 <div class="overlay" id="overlay" onclick="closeTask()"></div>
 <div class="task-detail" id="taskDetail">
     <h3 id="taskTitle"></h3>
@@ -341,6 +372,7 @@ body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #f4f4f9;
         <a id="deleteLink" class="delete-btn">刪除</a>
     </div>
 </div>
+
 <script>
 function showTask(id, description, dueAt, completed) {
     document.getElementById('taskTitle').textContent = description;
@@ -350,6 +382,7 @@ function showTask(id, description, dueAt, completed) {
     document.getElementById('overlay').style.display = 'block';
     document.getElementById('taskDetail').style.display = 'block';
 }
+
 function closeTask() {
     document.getElementById('overlay').style.display = 'none';
     document.getElementById('taskDetail').style.display = 'none';
@@ -359,11 +392,14 @@ function closeTask() {
 </html>
 `
 
+// --- Handlers ---
+
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 		passwordHash := hashPassword(password)
+
 		for _, user := range appData.Users {
 			if user.Username == username && user.PasswordHash == passwordHash {
 				sessionID := fmt.Sprintf("%d", time.Now().UnixNano())
@@ -377,6 +413,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+
 		data := map[string]interface{}{
 			"IsRegister": false,
 			"Error":      "使用者名稱或密碼錯誤",
@@ -385,14 +422,17 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		t.Execute(w, data)
 		return
 	}
+
 	data := map[string]interface{}{"IsRegister": false}
 	t, _ := template.New("login").Parse(loginTemplate)
 	t.Execute(w, data)
 }
+
 func registerHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
+
 		for _, user := range appData.Users {
 			if user.Username == username {
 				data := map[string]interface{}{
@@ -404,19 +444,23 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+
 		newUser := User{
 			Username:     username,
 			PasswordHash: hashPassword(password),
 		}
 		appData.Users = append(appData.Users, newUser)
 		saveData()
+
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
+
 	data := map[string]interface{}{"IsRegister": true}
 	t, _ := template.New("login").Parse(loginTemplate)
 	t.Execute(w, data)
 }
+
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("session")
 	if err == nil {
@@ -430,11 +474,15 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
+
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	username := getUsername(r)
-	filter := r.URL.Query().Get("filter")
+	filter := r.URL.Query().Get("filter") // 取得過濾參數
+
 	var userTasks []Task
 	now := time.Now()
+
+	// 篩選任務
 	for _, task := range appData.Tasks {
 		if task.Username == username {
 			if filter == "today" {
@@ -449,24 +497,31 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 			userTasks = append(userTasks, task)
 		}
 	}
+
+	// 智慧排序：逾期且未完成的優先 -> 接著按到期時間
 	sort.SliceStable(userTasks, func(i, j int) bool {
 		iOver := userTasks[i].DueAt.Before(now) && !userTasks[i].Completed
 		jOver := userTasks[j].DueAt.Before(now) && !userTasks[j].Completed
+
 		if iOver != jOver {
-			return iOver
+			return iOver // 如果一個逾期一個沒逾期，逾期的排前面
 		}
-		return userTasks[i].DueAt.Before(userTasks[j].DueAt)
+		return userTasks[i].DueAt.Before(userTasks[j].DueAt) // 否則按時間排
 	})
+
+	// 計算總逾期數（不管過濾條件，算給 Header 警告用的）
 	overdueCount := 0
-	for _, task := range userTasks {
-		if task.DueAt.Before(now) && !task.Completed {
+	for _, task := range appData.Tasks {
+		if task.Username == username && task.DueAt.Before(now) && !task.Completed {
 			overdueCount++
 		}
 	}
+
 	funcMap := template.FuncMap{
 		"remain": remainingTime,
 		"now":    time.Now,
 	}
+
 	data := map[string]interface{}{
 		"Username":     username,
 		"Tasks":        userTasks,
@@ -474,25 +529,31 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		"OverdueCount": overdueCount,
 		"Filter":       filter,
 	}
+
 	t, _ := template.New("list").Funcs(funcMap).Parse(listTemplate)
 	t.Execute(w, data)
 }
 
 func calendarHandler(w http.ResponseWriter, r *http.Request) {
 	username := getUsername(r)
+
 	year, _ := strconv.Atoi(r.URL.Query().Get("year"))
 	month, _ := strconv.Atoi(r.URL.Query().Get("month"))
+
 	if year == 0 {
 		now := time.Now()
 		year = now.Year()
 		month = int(now.Month())
 	}
+
 	firstDay := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
 	startWeekday := int(firstDay.Weekday())
 	startDate := firstDay.AddDate(0, 0, -startWeekday)
+
 	var days []map[string]interface{}
 	currentDate := startDate
 	now := time.Now()
+
 	for i := 0; i < 42; i++ {
 		var dayTasks []map[string]interface{}
 		for _, task := range appData.Tasks {
@@ -510,6 +571,7 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+
 		class := ""
 		if currentDate.Year() != year || int(currentDate.Month()) != month {
 			class = "other-month"
@@ -517,25 +579,30 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 		if currentDate.Format("2006-01-02") == now.Format("2006-01-02") {
 			class = "today"
 		}
+
 		days = append(days, map[string]interface{}{
 			"Day":   currentDate.Day(),
 			"Tasks": dayTasks,
 			"Class": class,
 		})
+
 		currentDate = currentDate.AddDate(0, 0, 1)
 	}
+
 	prevMonth := month - 1
 	prevYear := year
 	if prevMonth == 0 {
 		prevMonth = 12
 		prevYear--
 	}
+
 	nextMonth := month + 1
 	nextYear := year
 	if nextMonth == 13 {
 		nextMonth = 1
 		nextYear++
 	}
+
 	data := map[string]interface{}{
 		"Username":  username,
 		"Year":      year,
@@ -546,15 +613,18 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 		"NextYear":  nextYear,
 		"NextMonth": nextMonth,
 	}
+
 	t, _ := template.New("calendar").Parse(calendarTemplate)
 	t.Execute(w, data)
 }
+
 func addHandler(w http.ResponseWriter, r *http.Request) {
 	username := getUsername(r)
 	if r.Method == "POST" {
 		desc := r.FormValue("description")
 		dueStr := r.FormValue("due_at")
 		dueAt, _ := time.Parse("2006-01-02T15:04", dueStr)
+
 		task := Task{
 			ID:          appData.NextID,
 			Description: desc,
@@ -563,16 +633,19 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 			DueAt:       dueAt,
 			Username:    username,
 		}
+
 		appData.Tasks = append(appData.Tasks, task)
 		appData.NextID++
 		saveData()
 	}
+
 	referer := r.Header.Get("Referer")
 	if referer == "" {
 		referer = "/"
 	}
 	http.Redirect(w, r, referer, http.StatusSeeOther)
 }
+
 func toggleHandler(w http.ResponseWriter, r *http.Request) {
 	username := getUsername(r)
 	id, _ := strconv.Atoi(r.FormValue("id"))
@@ -585,6 +658,7 @@ func toggleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, r.Header.Get("Referer"), http.StatusSeeOther)
 }
+
 func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	username := getUsername(r)
 	id, _ := strconv.Atoi(r.URL.Query().Get("id"))
@@ -597,6 +671,9 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, r.Header.Get("Referer"), http.StatusSeeOther)
 }
+
+// --- Main ---
+
 func main() {
 	appData = &AppData{
 		Users:  []User{},
@@ -604,6 +681,7 @@ func main() {
 		NextID: 1,
 	}
 	loadData()
+
 	http.HandleFunc("/login", loginHandler)
 	http.HandleFunc("/register", registerHandler)
 	http.HandleFunc("/logout", logoutHandler)
@@ -612,6 +690,7 @@ func main() {
 	http.HandleFunc("/add", requireAuth(addHandler))
 	http.HandleFunc("/toggle", requireAuth(toggleHandler))
 	http.HandleFunc("/delete", requireAuth(deleteHandler))
+
 	fmt.Println("Server started at http://localhost:8080")
 	fmt.Println("請先註冊帳號再登入使用")
 	log.Fatal(http.ListenAndServe(":8080", nil))
